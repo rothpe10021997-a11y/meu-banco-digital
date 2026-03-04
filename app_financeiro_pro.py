@@ -32,7 +32,7 @@ st.title("🏦 Banco Digital Finance")
 # ==============================
 if "dados" not in st.session_state:
     st.session_state.dados = pd.DataFrame(columns=[
-        "Tipo", "Descricao", "Valor", "Data", "Recorrencia"
+        "Tipo", "Descricao", "Valor", "Data", "DataFinal", "Recorrencia"
     ])
 
 # ==============================
@@ -43,7 +43,8 @@ st.sidebar.header("➕ Nova Transação")
 tipo = st.sidebar.selectbox("Tipo", ["Receita", "Despesa"])
 descricao = st.sidebar.text_input("Descrição")
 valor = st.sidebar.number_input("Valor", min_value=0.0, step=0.01)
-data = st.sidebar.date_input("Data", datetime.today())
+data = st.sidebar.date_input("Data inicial", datetime.today())
+data_final = st.sidebar.date_input("Data final (opcional)", datetime.today())
 recorrencia = st.sidebar.selectbox("Recorrência", ["Única vez", "Mensal"])
 
 if st.sidebar.button("Adicionar"):
@@ -52,6 +53,7 @@ if st.sidebar.button("Adicionar"):
         "Descricao": descricao,
         "Valor": valor,
         "Data": pd.to_datetime(data),
+        "DataFinal": pd.to_datetime(data_final),
         "Recorrencia": recorrencia
     }])
     st.session_state.dados = pd.concat([st.session_state.dados, nova], ignore_index=True)
@@ -65,23 +67,32 @@ st.sidebar.subheader("📂 Importar CSV")
 arquivo = st.sidebar.file_uploader("Envie um CSV", type=["csv"])
 if arquivo:
     df_upload = pd.read_csv(arquivo)
+    # garantir colunas corretas
+    for col in ["Data", "DataFinal"]:
+        if col in df_upload.columns:
+            df_upload[col] = pd.to_datetime(df_upload[col], errors='coerce')
     st.session_state.dados = pd.concat([st.session_state.dados, df_upload], ignore_index=True)
     st.sidebar.success("Arquivo importado!")
 
 # ==============================
-# Função para gerar recorrências
+# Função para gerar recorrências até DataFinal
 # ==============================
-def gerar_recorrencias(df, meses=12):
+def gerar_recorrencias(df, meses_proj=12):
     todas_transacoes = []
     for idx, row in df.iterrows():
         data = row["Data"]
-        for m in range(meses):
+        if pd.notnull(row.get("DataFinal")):
+            data_fim = row["DataFinal"]
+        else:
+            data_fim = data + pd.DateOffset(months=meses_proj-1)
+        while data <= data_fim:
+            transacao = row.copy()
+            transacao["Data"] = data
+            todas_transacoes.append(transacao)
             if row["Recorrencia"] == "Mensal":
-                transacao = row.copy()
-                transacao["Data"] = data + relativedelta(months=m)
-                todas_transacoes.append(transacao)
+                data += relativedelta(months=1)
             else:
-                todas_transacoes.append(row)
+                break
     return pd.DataFrame(todas_transacoes)
 
 # ==============================
